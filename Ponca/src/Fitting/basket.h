@@ -228,6 +228,42 @@ namespace Ponca
             return res;
         }
 
+        /*!
+         * \brief compute the fit using the Quasi orthogonal projection process.
+         *
+         * Method published in \cite alexa2004normals
+         *
+         * \param points An STL-like container of points
+         * \param mlsIter The amount of MLS iteration that is being done for this fit
+         * \return The result of the fit
+         */
+        template<typename Func>
+        PONCA_MULTIARCH FIT_RESULT computeQuasiOrthoMLSImpl( Func&& computeFunc, const int mlsIter, const Scalar epsilon)
+        {
+            FIT_RESULT res = UNDEFINED;
+            const auto basePos   = Base::getNeighborFilter().evalPos();
+            auto lastPos   = Base::getNeighborFilter().evalPos();
+
+            for (int mm = 0; mm < mlsIter; ++mm)
+            {
+                Base::m_nFilter.changeNeighborhoodFrame(lastPos);
+                res = computeFunc();
+
+                if (Base::isStable())
+                {
+                    auto newPos = Base::project(basePos);
+                    if (newPos.isApprox(lastPos, epsilon))
+                        return res;
+                    lastPos = newPos;
+                }
+                else
+                {
+                    return res;
+                }
+            }
+            return res;
+        }
+
     public:
         /*!
          * \copydoc BasketComputeObject::computeMLSImpl
@@ -252,13 +288,40 @@ namespace Ponca
         {
             return computeMLSImpl([&]() { return computeWithIds(ids, points); }, mlsIter, epsilon);
         }
+
+        /*!
+         * \copydoc BasketComputeObject::computeMLSImpl
+         * \tparam PointContainer STL-like container storing the points
+         */
+        template <typename PointContainer>
+        PONCA_MULTIARCH FIT_RESULT computeQuasiOrthoMLS(const PointContainer& points, const int mlsIter = 5,
+                                                        const Scalar epsilon = Eigen::NumTraits<Scalar>::dummy_precision())
+        {
+            return computeQuasiOrthoMLSImpl([&]() { return compute(points); }, mlsIter, epsilon);
+        }
+
+        /*!
+         * \copydoc BasketComputeObject::computeQuasiOrthoMLSImpl
+         * \tparam IndexRange STL-Like range storing indices
+         * \tparam PointContainer STL-like container storing the points
+         */
+        template <typename IndexRange, typename PointContainer>
+        PONCA_MULTIARCH FIT_RESULT computeWithIdsQuasiOrthoMLS(const IndexRange& ids, const PointContainer& points,
+                                                         const int mlsIter    = 5,
+                                                         const Scalar epsilon = Eigen::NumTraits<Scalar>::dummy_precision())
+        {
+            return computeQuasiOrthoMLSImpl([&]() { return computeWithIds(ids, points); }, mlsIter, epsilon);
+        }
+
     };
 
 #define WRITE_COMPUTE_FUNCTIONS                            \
     using BasketComputeObject<Self, Base>::compute;        \
     using BasketComputeObject<Self, Base>::computeWithIds; \
     using BasketComputeObject<Self, Base>::computeMLS;     \
-    using BasketComputeObject<Self, Base>::computeWithIdsMLS;
+    using BasketComputeObject<Self, Base>::computeWithIdsMLS; \
+    using BasketComputeObject<Self, Base>::computeQuasiOrthoMLS; \
+    using BasketComputeObject<Self, Base>::computeWithIdsQuasiOrthoMLS; \
 
     /*!
          \brief Aggregator class used to declare specialized structures with derivatives computations, using CRTP
